@@ -35,6 +35,11 @@ class User(Base):
         default=func.now(),
         nullable=False
     )
-    messages: Mapped[list["Message"]] = relationship(
+    sent_messages: Mapped[list["Message"]] = relationship(
+        foreign_keys="Message.sender_id",
         back_populates="sender"
+    )
+    received_messages: Mapped[list["Message"]] = relationship(
+        foreign_keys="Message.recipient_id",
+        back_populates="recipient"
     )
