@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -6,6 +6,9 @@ from app.database import get_session
 from app.services.message import create_message
 from app.schemas.message import MessageCreate, MessageResponse
 from app.models.message import Message
+from app.models import User
+
+from app.dependencies import get_current_user
 
 
 router = APIRouter()
@@ -17,10 +20,12 @@ router = APIRouter()
 )
 async def create_message_endpoint(
     message_data: MessageCreate,
-    session: AsyncSession = Depends(get_session)
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user)
 ):
     message = await create_message(
         message_data,
+        current_user.id,
         session
     )
 
@@ -28,16 +33,16 @@ async def create_message_endpoint(
 
 
 @router.get(
-    "/messages/received/{user_id}",
+    "/messages/received",
     response_model=list[MessageResponse]
 )
 async def get_received_messages(
-    user_id: int,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session)
 ):
     result = await session.execute(
         select(Message)
-        .where(Message.recipient_id == user_id)
+        .where(Message.recipient_id == current_user.id)
         .order_by(Message.created_at.desc())
     )
 
@@ -45,16 +50,16 @@ async def get_received_messages(
 
 
 @router.get(
-    "/messages/sent/{user_id}",
+    "/messages/sent",
     response_model=list[MessageResponse]
 )
 async def get_sent_messages(
-    user_id: int,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session)
 ):
     result = await session.execute(
         select(Message)
-        .where(Message.sender_id == user_id)
+        .where(Message.sender_id == current_user.id)
         .order_by(Message.created_at.desc())
     )
 
@@ -62,19 +67,32 @@ async def get_sent_messages(
 
 
 @router.get(
-    "/messages/dialog/{user1}/{user2}",
+    "/messages/dialog/{recipient_id}",
     response_model=list[MessageResponse]
 )
 async def get_dialog(
-    user1: int,
-    user2: int,
+    recipient_id: int,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session)
 ):
+
+    recipient_result = await session.execute(
+        select(User).where(User.id == recipient_id)
+    )
+
+    recipient_user = recipient_result.scalar_one_or_none()
+
+    if recipient_user is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Пользователь не найден"
+        )
+
     result = await session.execute(
         select(Message).where(
             or_(
-                and_(Message.sender_id == user1, Message.recipient_id == user2),
-                and_(Message.sender_id == user2, Message.recipient_id == user1),
+                and_(Message.sender_id == current_user.id, Message.recipient_id == recipient_user.id),
+                and_(Message.sender_id == recipient_user.id, Message.recipient_id == current_user.id),
             )
         ).order_by(Message.created_at.asc())
     )

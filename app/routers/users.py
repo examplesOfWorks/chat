@@ -22,6 +22,7 @@ router = APIRouter()
     )
 async def get_users(
     session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user)
 ):
     result = await session.execute(
         select(User)
@@ -38,7 +39,8 @@ async def get_users(
 )
 async def search_users(
     username: str,
-    session: AsyncSession = Depends(get_session)
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user)
 ):
     result = await session.execute(
         select(User).where(
@@ -130,6 +132,7 @@ async def login(
         )
 
     access_token = create_access_token(existing_user.id)
+
 
     return {
         "access_token": access_token,

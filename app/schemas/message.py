@@ -3,7 +3,6 @@ from datetime import datetime
 from pydantic import BaseModel
 
 class MessageCreate(BaseModel):
-    sender_id: int
     recipient_id: int
     text: str
 
