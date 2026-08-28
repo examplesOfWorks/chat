@@ -4,15 +4,36 @@
     <meta charset="UTF-8">
     <title>Чат</title>
 </head>
+
 <body>
 
-<h1>Мой чат</h1>
+<h1>Чат</h1>
 
-<p>Привет, {{ user.username }}!</p>
+<p>
+    Вы вошли как: <strong>{{ user.username }}</strong>
+</p>
 
-<p>ID: {{ user.id }}</p>
-<p>Username: {{ user.username }}</p>
-<p>Email: {{ user.email }}</p>
+<hr>
+
+<div>
+
+    <h2>Пользователи</h2>
+
+    {% if users %}
+        <ul>
+            {% for other_user in users %}
+                <li>
+                    <a href="/web/chat/{{ other_user.id }}">
+                        {{ other_user.username }}
+                    </a>
+                </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p>Других пользователей пока нет.</p>
+    {% endif %}
+
+</div>
 
 </body>
 </html>

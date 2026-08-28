@@ -1,15 +1,19 @@
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, Request, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import select
+from sqlalchemy import select, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_session
 from app.models.user import User
+from app.models.message import Message
 from app.security import verify_password, create_access_token
 from app.dependencies import get_current_web_user
+
+from app.schemas.message import MessageCreate
+from app.services.message import create_message
 
 router = APIRouter(prefix="/web", tags=["web"])
 
@@ -69,22 +73,109 @@ async def web_login(
 
     return response
 
-    # return {
-    #     "access_token": access_token,
-    #     "token_type": "bearer"
-    # }
-
 
 @router.get("/chat", response_class=HTMLResponse, include_in_schema=False)
 async def chat_page(
     request: Request,
     current_user: User = Depends(get_current_web_user),
+    session: AsyncSession = Depends(get_session)
 ):
+    result = await session.execute(
+        select(User)
+        .where(User.id != current_user.id)
+        .order_by(User.username)
+    )
+
+    users = result.scalars().all()
 
     return templates.TemplateResponse(
         name="chat.html",
         request=request,
         context={
-            "user": current_user
+            "request": request,
+            "user": current_user,
+            "users": users
         }
     )
+
+
+@router.get("/chat/{recipient_id}", response_class=HTMLResponse, include_in_schema=False)
+async def dialog_page(
+    request: Request,
+    recipient_id: int,
+    current_user: User = Depends(get_current_web_user),
+    session: AsyncSession = Depends(get_session),
+):
+
+    recipient_result = await session.execute(
+        select(User).where(User.id == recipient_id)
+    )
+
+    recipient_user = recipient_result.scalar_one_or_none()
+
+    if recipient_user is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Пользователь не найден"
+        )
+
+    result = await session.execute(
+        select(Message).where(
+            or_(
+                and_(Message.sender_id == current_user.id, Message.recipient_id == recipient_user.id),
+                and_(Message.sender_id == recipient_user.id, Message.recipient_id == current_user.id),
+            )
+        ).order_by(Message.created_at.asc())
+    )
+
+    messages = result.scalars().all()
+
+    return templates.TemplateResponse(
+        name="dialog.html",
+        request=request,
+        context={
+            "request": request,
+            "user": current_user,
+            "recipient": recipient_user,
+            "messages": messages
+        }
+    )
+
+@router.post(
+    "/chat/{recipient_id}/send"
+)
+async def send_message_from_web(
+    recipient_id: int,
+    text: str = Form(...),
+    current_user: User = Depends(get_current_web_user),
+    session: AsyncSession = Depends(get_session),
+):
+    recipient_result = await session.execute(
+        select(User).where(User.id == recipient_id)
+    )
+
+    recipient_user = recipient_result.scalar_one_or_none()
+
+    if recipient_user is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Пользователь не найден"
+        )
+
+    message_data = MessageCreate(
+        sender_id=current_user.id,
+        recipient_id=recipient_user.id,
+        text=text
+    )
+
+    await create_message(
+        message_data=message_data,
+        user_id=current_user.id,
+        session=session
+    )
+
+    return RedirectResponse(
+        f"/web/chat/{recipient_id}",
+        status_code=303
+    )
+

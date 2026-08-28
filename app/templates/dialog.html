@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Диалог с {{ recipient.username }}</title>
+</head>
+
+<body>
+
+<p>
+    <a href="/web/chat">← Все пользователи</a>
+</p>
+
+<h1>
+    Диалог с {{ recipient.username }}
+</h1>
+
+<hr>
+
+<div>
+
+    {% if messages %}
+
+        {% for message in messages %}
+
+            <div>
+                {% if message.sender_id == user.id %}
+                    <strong>Вы:</strong>
+                {% else %}
+                    <strong>{{ recipient.username }}:</strong>
+                {% endif %}
+
+                {{ message.text }}
+
+                <small>
+                    {{ message.created_at }}
+                </small>
+            </div>
+
+            <br>
+
+        {% endfor %}
+
+    {% else %}
+
+        <p>Сообщений пока нет.</p>
+
+    {% endif %}
+
+    <hr>
+
+    <form method="post" action="/web/chat/{{ recipient.id }}/send">
+        <input
+            type="text"
+            name="text"
+            placeholder="Введите сообщение..."
+            required
+        >
+
+        <button type="submit">
+            Отправить
+        </button>
+    </form>
+
+</div>
+
+</body>
+</html>

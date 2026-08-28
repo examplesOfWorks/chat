@@ -98,3 +98,5 @@ async def get_dialog(
     )
 
     return result.scalars().all()
+
+
