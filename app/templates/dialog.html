@@ -1,8 +1,78 @@
 <!DOCTYPE html>
-<html>
+
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
     <title>Диалог с {{ recipient.username }}</title>
+
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+
+    .chat {
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        padding: 20px;
+        height: 500px;
+        overflow-y: auto;
+        margin-bottom: 15px;
+    }
+
+    .message {
+        display: flex;
+        margin-bottom: 10px;
+    }
+
+    .message.mine {
+        justify-content: flex-end;
+    }
+
+    .message.theirs {
+        justify-content: flex-start;
+    }
+
+    .message-content {
+        max-width: 70%;
+        padding: 10px 14px;
+        border-radius: 12px;
+    }
+
+    .mine .message-content {
+        background: #d9fdd3;
+    }
+
+    .theirs .message-content {
+        background: #f0f0f0;
+    }
+
+    .message-text {
+        margin-bottom: 4px;
+    }
+
+    .message-time {
+        font-size: 11px;
+        color: #777;
+    }
+
+    .send-form {
+        display: flex;
+        gap: 10px;
+    }
+
+    .send-form input {
+        flex: 1;
+        padding: 10px;
+    }
+
+    .send-form button {
+        padding: 10px 20px;
+    }
+</style>
+
 </head>
 
 <body>
@@ -15,54 +85,183 @@
     Диалог с {{ recipient.username }}
 </h1>
 
-<hr>
+<div class="chat" id="chat">
 
-<div>
+{% if messages %}
 
-    {% if messages %}
+    {% for message in messages %}
 
-        {% for message in messages %}
+        {% if message.sender_id == user.id %}
 
-            <div>
-                {% if message.sender_id == user.id %}
-                    <strong>Вы:</strong>
-                {% else %}
-                    <strong>{{ recipient.username }}:</strong>
-                {% endif %}
+            <div class="message mine">
+                <div class="message-content">
+                    <div class="message-text">
+                        {{ message.text }}
+                    </div>
 
-                {{ message.text }}
-
-                <small>
-                    {{ message.created_at }}
-                </small>
+                    <div class="message-time">
+                        {{ message.created_at.strftime("%H:%M") }}
+                    </div>
+                </div>
             </div>
 
-            <br>
+        {% else %}
 
-        {% endfor %}
+            <div class="message theirs">
+                <div class="message-content">
+                    <div class="message-text">
+                        {{ message.text }}
+                    </div>
 
-    {% else %}
+                    <div class="message-time">
+                        {{ message.created_at.strftime("%H:%M") }}
+                    </div>
+                </div>
+            </div>
 
-        <p>Сообщений пока нет.</p>
+        {% endif %}
 
-    {% endif %}
+    {% endfor %}
 
-    <hr>
+{% else %}
 
-    <form method="post" action="/web/chat/{{ recipient.id }}/send">
-        <input
-            type="text"
-            name="text"
-            placeholder="Введите сообщение..."
-            required
-        >
+    <p>Сообщений пока нет.</p>
 
-        <button type="submit">
-            Отправить
-        </button>
-    </form>
+{% endif %}
 
 </div>
+
+<form
+    id="send-form"
+    class="send-form"
+>
+    <input
+        id="message-input"
+        type="text"
+        name="text"
+        placeholder="Введите сообщение..."
+        autocomplete="off"
+        required
+    >
+
+<button type="submit">
+    Отправить
+</button>
+
+</form>
+
+
+<script>
+    const recipientId = {{ recipient.id }};
+
+    const socket = new WebSocket(
+        `ws://${window.location.host}/web/ws/chat/${recipientId}`
+    );
+
+    socket.onopen = function () {
+        console.log("WebSocket подключен");
+    };
+
+    //socket.onmessage = function (event) {
+        ////console.log("Получено от сервера:", event.data);
+        //const data = JSON.parse(event.data);
+        //console.log(data);
+
+        //console.log("Тип события:", data.type);
+        //console.log("Сообщение:", data.message);
+
+
+        //const chat = document.getElementById("chat");
+
+        //const message = document.createElement("div");
+        //message.classList.add("message", "mine");
+
+        //const content = document.createElement("div");
+        //content.classList.add("message-content");
+
+        //const text = document.createElement("div");
+        //text.classList.add("message-text");
+        //text.textContent = event.data;
+
+        //content.appendChild(text);
+        //message.appendChild(content);
+        //chat.appendChild(message);
+
+        //chat.scrollTop = chat.scrollHeight;
+    //};
+
+    socket.onmessage = function (event) {
+        const data = JSON.parse(event.data);
+
+        if (data.type !== "new_message") {
+            return;
+        }
+
+        const messageData = data.message;
+
+        const chat = document.getElementById("chat");
+
+        const message = document.createElement("div");
+
+        if (messageData.sender_id === {{ user.id }}) {
+            message.classList.add("message", "mine");
+        } else {
+            message.classList.add("message", "theirs");
+        }
+
+        const content = document.createElement("div");
+        content.classList.add("message-content");
+
+        const text = document.createElement("div");
+        text.classList.add("message-text");
+        text.textContent = messageData.text;
+
+        const time = document.createElement("div");
+        time.classList.add("message-time");
+
+        const date = new Date(messageData.created_at);
+
+        time.textContent = date.toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit"
+        });
+
+        content.appendChild(text);
+        content.appendChild(time);
+        
+        message.appendChild(content);
+        chat.appendChild(message);
+
+        chat.scrollTop = chat.scrollHeight;
+    };
+
+    socket.onclose = function () {
+        console.log("WebSocket отключен");
+    };
+
+    socket.onerror = function (error) {
+        console.error("WebSocket ошибка:", error);
+    };
+
+    const form = document.getElementById("send-form");
+    const input = document.getElementById("message-input");
+
+    form.addEventListener("submit", function(event){
+        event.preventDefault();
+
+        const text = input.value.trim();
+
+        if (!text) {
+            return;
+        }
+
+        socket.send(text);
+
+        input.value = ""
+
+    });
+
+</script>
 
 </body>
 </html>

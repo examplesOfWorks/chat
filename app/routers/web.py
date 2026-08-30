@@ -1,6 +1,7 @@
 from pathlib import Path
+import jwt
 
-from fastapi import APIRouter, Depends, Form, Request, HTTPException
+from fastapi import APIRouter, Depends, Form, Request, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select, and_, or_
@@ -9,11 +10,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_session
 from app.models.user import User
 from app.models.message import Message
-from app.security import verify_password, create_access_token
+from app.security import verify_password, create_access_token, SECRET_KEY, ALGORITHM
 from app.dependencies import get_current_web_user
 
 from app.schemas.message import MessageCreate
 from app.services.message import create_message
+from app.services.websocket import manager
+
+
 
 router = APIRouter(prefix="/web", tags=["web"])
 
@@ -179,3 +183,112 @@ async def send_message_from_web(
         status_code=303
     )
 
+# @router.websocket("/ws/chat/{recipient_id}")
+# async def websocket_chat(
+#     websocket: WebSocket,
+#     recipient_id: int,
+#     session: AsyncSession = Depends(get_session)
+# ):
+#     token = websocket.cookies.get("access_token")
+
+#     if token is None:
+#         await websocket.close(code=1008)
+#         return
+
+#     await websocket.accept()
+
+#     try:
+#         while True:
+#             text = await websocket.receive_text()
+
+#             await websocket.send_text(
+#                 f"Сервер получил {text}"
+#             )
+
+#     except WebSocketDisconnect:
+#         print("WebSocket отключен")
+
+@router.websocket("/ws/chat/{recipient_id}")
+async def websocket_chat(
+    websocket: WebSocket,
+    recipient_id: int,
+    session: AsyncSession = Depends(get_session)
+):
+    token = websocket.cookies.get("access_token")
+
+    if token is None:
+        await websocket.close(code=1008)
+        return
+
+    try:
+        payload = jwt.decode(
+            token,
+            SECRET_KEY,
+            algorithms=[ALGORITHM],
+        )
+
+        user_id = int(payload.get("sub"))
+
+    except (jwt.InvalidTokenError, KeyError, ValueError):
+        await websocket.close(code=1008)
+        return
+
+    current_result = await session.execute(
+        select(User).where(User.id == user_id)
+    )
+
+    current_user = current_result.scalar_one_or_none()
+
+    if current_user is None:
+        await websocket.close(code=1008)
+        return
+
+    # await websocket.accept()
+
+    await manager.connect(current_user.id, websocket)
+
+    try:
+        while True:
+            text = await websocket.receive_text()
+
+            message_data = MessageCreate(
+                sender_id=current_user.id,
+                # recipient_id=recipient_user.id,
+                recipient_id=recipient_id,
+                text=text
+            )
+
+            message = await create_message(
+                message_data=message_data,
+                user_id=current_user.id,
+                session=session
+            )
+
+            # await websocket.send_text(text)
+
+            event = {
+                "type": "new_message",
+                "message": {
+                    "id": message.id,
+                    "sender_id": message.sender_id,
+                    "recipient_id": message.recipient_id,
+                    "text": message.text,
+                    "created_at": message.created_at.isoformat()
+                }
+            }
+
+            await manager.send_to_user(
+                recipient_id,
+                # text
+                event
+            )
+
+            await manager.send_to_user(
+                current_user.id,
+                # text
+                event
+            )
+
+    except WebSocketDisconnect:
+        manager.disconnect(current_user.id)
+        print("WebSocket отключен")
