@@ -71,6 +71,13 @@
     .send-form button {
         padding: 10px 20px;
     }
+
+    #typing-indicator {
+        height: 20px;
+        font-size: 13px;
+        color: #777;
+        margin-bottom: 5px;
+    }
 </style>
 
 </head>
@@ -131,6 +138,8 @@
 
 </div>
 
+<div id="typing-indicator"></div>
+
 <form
     id="send-form"
     class="send-form"
@@ -158,44 +167,42 @@
         `ws://${window.location.host}/web/ws/chat/${recipientId}`
     );
 
+    const form = document.getElementById("send-form");
+    const input = document.getElementById("message-input");
+
+    let typingTimer = null;
+
     socket.onopen = function () {
         console.log("WebSocket подключен");
     };
 
-    //socket.onmessage = function (event) {
-        ////console.log("Получено от сервера:", event.data);
-        //const data = JSON.parse(event.data);
-        //console.log(data);
-
-        //console.log("Тип события:", data.type);
-        //console.log("Сообщение:", data.message);
-
-
-        //const chat = document.getElementById("chat");
-
-        //const message = document.createElement("div");
-        //message.classList.add("message", "mine");
-
-        //const content = document.createElement("div");
-        //content.classList.add("message-content");
-
-        //const text = document.createElement("div");
-        //text.classList.add("message-text");
-        //text.textContent = event.data;
-
-        //content.appendChild(text);
-        //message.appendChild(content);
-        //chat.appendChild(message);
-
-        //chat.scrollTop = chat.scrollHeight;
-    //};
-
     socket.onmessage = function (event) {
         const data = JSON.parse(event.data);
 
-        if (data.type !== "new_message") {
+        //console.log(data)
+
+        if (data.type === "typing") {
+            handleTyping(data);
             return;
         }
+
+        if (data.type === "new_message") {
+            handleNewMessage(data);
+            return;
+        }
+    };
+
+    function handleTyping(data) {
+        const typingIndicator = document.getElementById("typing-indicator");
+
+        if (data.is_typing) {
+            typingIndicator.textContent = "{{ recipient.username }} печатает...";
+        } else {
+            typingIndicator.textContent = ""
+        }
+    }
+
+    function handleNewMessage(data) {
 
         const messageData = data.message;
 
@@ -233,18 +240,21 @@
         chat.appendChild(message);
 
         chat.scrollTop = chat.scrollHeight;
-    };
+    }
 
-    socket.onclose = function () {
-        console.log("WebSocket отключен");
-    };
+    input.addEventListener("input", function() {
+        socket.send(JSON.stringify({
+            type: "typing_start"
+        }));
 
-    socket.onerror = function (error) {
-        console.error("WebSocket ошибка:", error);
-    };
+        clearTimeout(typingTimer);
 
-    const form = document.getElementById("send-form");
-    const input = document.getElementById("message-input");
+        typingTimer = setTimeout(function() {
+            socket.send(JSON.stringify({
+                type: "typing_stop"
+            }));
+        }, 1000);
+    });
 
     form.addEventListener("submit", function(event){
         event.preventDefault();
@@ -255,11 +265,29 @@
             return;
         }
 
-        socket.send(text);
+        //socket.send(text);
+        socket.send(JSON.stringify({
+            type: "send_message",
+            text: text
+        }));
+
+        socket.send(JSON.stringify({
+            type: "typing_stop"
+        }));
+
+        clearTimeout(typingTimer);
 
         input.value = ""
 
     });
+
+    socket.onclose = function () {
+        console.log("WebSocket отключен");
+    };
+
+    socket.onerror = function (error) {
+        console.error("WebSocket ошибка:", error);
+    };
 
 </script>
 

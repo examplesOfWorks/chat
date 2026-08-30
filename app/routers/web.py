@@ -243,51 +243,74 @@ async def websocket_chat(
         await websocket.close(code=1008)
         return
 
-    # await websocket.accept()
-
     await manager.connect(current_user.id, websocket)
 
     try:
         while True:
-            text = await websocket.receive_text()
+            data = await websocket.receive_json()
 
-            message_data = MessageCreate(
-                sender_id=current_user.id,
-                # recipient_id=recipient_user.id,
-                recipient_id=recipient_id,
-                text=text
-            )
+            event_type = data.get("type")
 
-            message = await create_message(
-                message_data=message_data,
-                user_id=current_user.id,
-                session=session
-            )
+            if event_type == "send_message":
+                text = data.get("text", "").strip()
 
-            # await websocket.send_text(text)
+                if not text:
+                    continue
 
-            event = {
-                "type": "new_message",
-                "message": {
-                    "id": message.id,
-                    "sender_id": message.sender_id,
-                    "recipient_id": message.recipient_id,
-                    "text": message.text,
-                    "created_at": message.created_at.isoformat()
+                message_data = MessageCreate(
+                    sender_id=current_user.id,
+                    recipient_id=recipient_id,
+                    text=text
+                )
+
+                message = await create_message(
+                    message_data=message_data,
+                    user_id=current_user.id,
+                    session=session
+                )
+
+                event = {
+                    "type": "new_message",
+                    "message": {
+                        "id": message.id,
+                        "sender_id": message.sender_id,
+                        "recipient_id": message.recipient_id,
+                        "text": message.text,
+                        "created_at": message.created_at.isoformat()
+                    }
                 }
-            }
 
-            await manager.send_to_user(
-                recipient_id,
-                # text
-                event
-            )
+                await manager.send_to_user(
+                    recipient_id,
+                    event
+                )
 
-            await manager.send_to_user(
-                current_user.id,
-                # text
-                event
-            )
+                await manager.send_to_user(
+                    current_user.id,
+                    event
+                )
+
+            elif event_type == "typing_start":
+                await manager.send_to_user(
+                    recipient_id,
+                    {
+                        "type": "typing",
+                        "user_id": current_user.id,
+                        "is_typing": True
+                    }
+                )
+            elif event_type == "typing_stop":
+                await manager.send_to_user(
+                    recipient_id,
+                    {
+                        "type": "typing",
+                        "user_id": current_user.id,
+                        "is_typing": False
+                    }
+                )
+            elif event_type == "read":
+                pass
+
 
     except WebSocketDisconnect:
         manager.disconnect(current_user.id)
