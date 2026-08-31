@@ -78,6 +78,13 @@
         color: #777;
         margin-bottom: 5px;
     }
+
+    #user-status {
+        height: 20px;
+        font-size: 13px;
+        color: #777;
+        margin-bottom: 10px;
+    }
 </style>
 
 </head>
@@ -91,6 +98,8 @@
 <h1>
     Диалог с {{ recipient.username }}
 </h1>
+
+<div id="user-status"></div>
 
 <div class="chat" id="chat">
 
@@ -190,6 +199,11 @@
             handleNewMessage(data);
             return;
         }
+
+        if (data.type === "user_status") {
+            handleUserStatus(data);
+            return;
+        }
     };
 
     function handleTyping(data) {
@@ -240,6 +254,18 @@
         chat.appendChild(message);
 
         chat.scrollTop = chat.scrollHeight;
+    }
+
+    function handleUserStatus(data) {
+        const userStatus = document.getElementById("user-status");
+
+        console.log(data)
+
+        if (data.status === "online") {
+            userStatus.textContent = "онлайн"
+        } else {
+            userStatus.textContent = "офлайн"
+        }
     }
 
     input.addEventListener("input", function() {

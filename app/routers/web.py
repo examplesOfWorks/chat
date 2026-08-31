@@ -245,6 +245,26 @@ async def websocket_chat(
 
     await manager.connect(current_user.id, websocket)
 
+    recipient_online = manager.is_online(recipient_id)
+
+    await manager.send_to_user(
+        current_user.id,
+        {
+            "type": "user_status",
+            "user_id": recipient_id,
+            "status": "online" if recipient_online else "offline"
+        }
+    )
+
+    await manager.send_to_user(
+        recipient_id,
+        {
+            "type": "user_status",
+            "user_id": current_user.id,
+            "status": "online"
+        }
+    )
+
     try:
         while True:
             data = await websocket.receive_json()
@@ -313,5 +333,16 @@ async def websocket_chat(
 
 
     except WebSocketDisconnect:
-        manager.disconnect(current_user.id)
-        print("WebSocket отключен")
+
+        is_offline = manager.disconnect(current_user.id, websocket)
+
+        if is_offline:
+            await manager.send_to_user(
+                recipient_id,
+                {
+                    "type": "user_status",
+                    "user_id": current_user.id,
+                    "status": "offline"
+                }
+            )
+            print("WebSocket отключен")

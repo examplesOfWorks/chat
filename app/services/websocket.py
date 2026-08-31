@@ -4,7 +4,7 @@ from fastapi import WebSocket
 class ConnectionManager:
 
     def __init__(self):
-        self.active_connections: dict[int, WebSocket] = {}
+        self.active_connections: dict[int, set[WebSocket]] = {}
 
     async def connect(
         self,
@@ -12,21 +12,40 @@ class ConnectionManager:
         websocket: WebSocket
     ):
         await websocket.accept()
-        self.active_connections[user_id] = websocket
 
-    def disconnect(self, user_id: int):
-        self.active_connections.pop(user_id, None)
+        if user_id not in self.active_connections:
+            self.active_connections[user_id] = set()
+
+        self.active_connections[user_id].add(websocket)
+
+    def disconnect(self, user_id: int, websocket: WebSocket):
+        connections = self.active_connections.get(user_id)
+
+        if not connections:
+            return False
+
+        connections.discard(websocket)
+
+        if not connections:
+            del self.active_connections[user_id]
+            return True
+
+        return False
+
+    def is_online(self, user_id: int):
+        return user_id in self.active_connections
 
     async def send_to_user(
         self,
         user_id: int,
-        # message: str
         data: dict
     ): 
-        websocket = self.active_connections.get(user_id)
+        connections = self.active_connections.get(user_id)
 
-        if websocket:
-            # await websocket.send_text(message)
+        if not connections:
+            return
+
+        for websocket in connections:
             await websocket.send_json(data)
 
 
