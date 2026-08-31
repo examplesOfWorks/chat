@@ -72,6 +72,10 @@
         padding: 10px 20px;
     }
 
+    .message-status {
+        margin-left: 5px;
+    }
+
     #typing-indicator {
         height: 20px;
         font-size: 13px;
@@ -109,7 +113,7 @@
 
         {% if message.sender_id == user.id %}
 
-            <div class="message mine">
+            <div class="message mine" data-message-id="{{ message.id }}">
                 <div class="message-content">
                     <div class="message-text">
                         {{ message.text }}
@@ -117,13 +121,23 @@
 
                     <div class="message-time">
                         {{ message.created_at.strftime("%H:%M") }}
+
+                        <span class="message-status">
+                            {% if message.read_at %}
+                                ✓✓
+                            {% else %}
+                                ✓
+                            {% endif %}
                     </div>
                 </div>
             </div>
 
         {% else %}
 
-            <div class="message theirs">
+            <div class="message theirs" 
+                data-message-id="{{ message.id }}"
+                data-read-at="{{ message.read_at.isoformat() if message.read_at else '' }}"
+            >
                 <div class="message-content">
                     <div class="message-text">
                         {{ message.text }}
@@ -183,12 +197,14 @@
 
     socket.onopen = function () {
         console.log("WebSocket подключен");
+
+        markUnreadMessagesAsRead();
     };
 
     socket.onmessage = function (event) {
         const data = JSON.parse(event.data);
 
-        //console.log(data)
+        //console.log("Получено от сервера:", data);
 
         if (data.type === "typing") {
             handleTyping(data);
@@ -202,6 +218,11 @@
 
         if (data.type === "user_status") {
             handleUserStatus(data);
+            return;
+        }
+
+        if (data.type === "message_read") {
+            handleMessageRead(data);
             return;
         }
     };
@@ -220,9 +241,18 @@
 
         const messageData = data.message;
 
+        if (messageData.sender_id !== {{ user.id }}) {
+            socket.send(JSON.stringify({
+                type: "read",
+                message_id: messageData.id
+            }));
+        }
+
         const chat = document.getElementById("chat");
 
         const message = document.createElement("div");
+
+        message.dataset.messageId = messageData.id;
 
         if (messageData.sender_id === {{ user.id }}) {
             message.classList.add("message", "mine");
@@ -247,6 +277,16 @@
             minute: "2-digit"
         });
 
+        
+        if (messageData.sender_id === {{ user.id }}) {
+            const status = document.createElement("span");
+
+            status.classList.add("message-status");
+            status.textContent = "✓";
+
+            time.appendChild(status);
+        }
+
         content.appendChild(text);
         content.appendChild(time);
         
@@ -266,6 +306,41 @@
         } else {
             userStatus.textContent = "офлайн"
         }
+    }
+
+    function handleMessageRead(data) {
+        const message = document.querySelector(
+            `[data-message-id="${data.message_id}"]`
+        );
+
+        if (!message) {
+            return;
+        }
+
+        const status = message.querySelector(".message-status");
+
+        if (!status) {
+            return;
+        }
+
+        status.textContent = "✓✓";
+    }
+
+    function markUnreadMessagesAsRead() {
+        const messages = document.querySelectorAll(
+            ".message.theirs[data-message-id]"
+        );
+
+        messages.forEach(function(message) {
+            const readAt = message.dataset.readAt;
+
+            if (!readAt) {
+                socket.send(JSON.stringify({
+                    type: "read",
+                    message_id: Number(message.dataset.messageId)
+                }));
+            }
+        });
     }
 
     input.addEventListener("input", function() {
@@ -314,6 +389,7 @@
     socket.onerror = function (error) {
         console.error("WebSocket ошибка:", error);
     };
+
 
 </script>
 

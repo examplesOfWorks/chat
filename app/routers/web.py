@@ -1,10 +1,13 @@
 from pathlib import Path
 import jwt
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, Form, Request, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+
 from sqlalchemy import select, and_, or_
+# from sqlalchemy.sql import func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_session
@@ -12,7 +15,6 @@ from app.models.user import User
 from app.models.message import Message
 from app.security import verify_password, create_access_token, SECRET_KEY, ALGORITHM
 from app.dependencies import get_current_web_user
-
 from app.schemas.message import MessageCreate
 from app.services.message import create_message
 from app.services.websocket import manager
@@ -329,7 +331,39 @@ async def websocket_chat(
                     }
                 )
             elif event_type == "read":
-                pass
+
+                # print("READ EVENT:", data)
+
+                message_id = data.get("message_id")
+
+                if message_id is None:
+                    continue
+
+                result = await session.execute(
+                    select(Message).where(
+                        Message.id == message_id,
+                        Message.recipient_id == current_user.id
+                    )
+                )
+
+                message = result.scalar_one_or_none()
+
+                if message is None:
+                    continue
+
+                if message.read_at is None:
+                    message.read_at = datetime.utcnow()
+                    # message.read_at = func.now()
+                    await session.commit()
+
+                    await manager.send_to_user(
+                        message.sender_id,
+                        {
+                            "type": "message_read",
+                            "message_id": message.id,
+                            "read_at": message.read_at.isoformat()
+                        }
+                    )
 
 
     except WebSocketDisconnect:

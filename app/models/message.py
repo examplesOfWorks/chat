@@ -35,6 +35,10 @@ class Message(Base):
         default=func.now(),
         nullable=False
     )
+    read_at: Mapped[datetime | None] = mapped_column(
+        DateTime,
+        nullable=True
+    )
     sender: Mapped["User"] = relationship(
         foreign_keys=[sender_id],
         back_populates="sent_messages"
