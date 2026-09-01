@@ -221,8 +221,12 @@
             return;
         }
 
-        if (data.type === "message_read") {
-            handleMessageRead(data);
+        //if (data.type === "message_read") {
+            //handleMessageRead(data);
+            //return;
+        //}
+        if (data.type === "messages_read") {
+            handleMessagesRead(data);
             return;
         }
     };
@@ -308,22 +312,42 @@
         }
     }
 
-    function handleMessageRead(data) {
-        const message = document.querySelector(
-            `[data-message-id="${data.message_id}"]`
-        );
+    //function handleMessageRead(data) {
+        //const message = document.querySelector(
+            //`[data-message-id="${data.message_id}"]`
+        //);
 
-        if (!message) {
-            return;
-        }
+        //if (!message) {
+            //return;
+        //}
 
-        const status = message.querySelector(".message-status");
+        //const status = message.querySelector(".message-status");
 
-        if (!status) {
-            return;
-        }
+        //if (!status) {
+            //return;
+        //}
 
-        status.textContent = "✓✓";
+        //status.textContent = "✓✓";
+    //}
+
+    function handleMessagesRead(data) {
+        data.message_ids.forEach(function(messageId) {
+            const message = document.querySelector(
+                `[data-message-id="${messageId}"]`
+            );   
+
+            if (!message) {
+                return;
+            }
+    
+            const status = message.querySelector(".message-status");
+    
+            if (!status) {
+                return;
+            }
+    
+            status.textContent = "✓✓";
+        });
     }
 
     function markUnreadMessagesAsRead() {
@@ -331,16 +355,25 @@
             ".message.theirs[data-message-id]"
         );
 
+        const messageIDs = [];
+
         messages.forEach(function(message) {
             const readAt = message.dataset.readAt;
 
             if (!readAt) {
-                socket.send(JSON.stringify({
-                    type: "read",
-                    message_id: Number(message.dataset.messageId)
-                }));
+                messageIDs.push(
+                    Number(message.dataset.messageId)
+                );
             }
         });
+
+        if (messageIDs.length === 0) {
+            return;
+        }
+        socket.send(JSON.stringify({
+            type: "read_messages",
+            message_ids:  messageIDs
+        }));
     }
 
     input.addEventListener("input", function() {

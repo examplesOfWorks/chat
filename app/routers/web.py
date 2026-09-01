@@ -359,12 +359,62 @@ async def websocket_chat(
                     await manager.send_to_user(
                         message.sender_id,
                         {
-                            "type": "message_read",
-                            "message_id": message.id,
+                            "type": "messages_read",
+                            "message_ids": [message.id],
                             "read_at": message.read_at.isoformat()
                         }
                     )
+            elif event_type == "read_messages":
+                message_ids = data.get("message_ids", [])
 
+                if not isinstance(message_ids, list):
+                    continue
+
+                message_ids = [
+                    message_id for message_id in message_ids if isinstance(message_id, int)
+                ]
+
+                if not message_ids:
+                    continue
+
+                result = await session.execute(
+                    select(Message).where(
+                        Message.id.in_(message_ids),
+                        Message.recipient_id == current_user.id,
+                        Message.read_at.is_(None)
+                    )
+                )
+
+                messages = result.scalars().all()
+
+                if not messages:
+                    continue
+
+                read_at = datetime.utcnow()
+
+                for message in messages:
+                    message.read_at = read_at
+
+                await session.commit()
+
+                sender_ids = {
+                    message.sender_id
+                    for message in messages
+                }
+
+                for sender_id in sender_ids:
+                    await manager.send_to_user(
+                        sender_id,
+                        {
+                            "type": "messages_read",
+                            "message_ids": [
+                                message.id
+                                for message in messages
+                                if message.sender_id == sender_id
+                            ],
+                            "read_at": read_at.isoformat()
+                        }
+                    )
 
     except WebSocketDisconnect:
 
